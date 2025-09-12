@@ -106,7 +106,7 @@ NumericVector localflowCpp(NumericVector x, std::size_t ni, std::size_t nw) {
 }"
 )
 
-# Function to calculate the angle based on the chord
+# Function to calculate the angle based on the chord (original version)
 
 cppFunction( 
   '#include <Rcpp.h>
@@ -143,6 +143,49 @@ double chordAngleCpp(NumericVector x) {
   return 2.0 * std::asin(arg);
 }'
 )
+
+
+# Function to calculate the angle based on the chord (modified to discount differences in slope)
+
+cppFunction( 
+  '#include <Rcpp.h>
+#include <cmath>
+using namespace Rcpp;
+
+// [[Rcpp::export]]
+double chordAngleCpp(NumericVector x) {
+  if (x.size() < 6) {
+    stop("Input vector must have at least 6 elements.");
+  }
+
+  double x1 = x[0], x2 = x[1], x3 = x[2],
+         x4 = x[3], x5 = x[4], x6 = x[5];
+
+  // Propagate NA like R would
+  if (NumericVector::is_na(x1) || NumericVector::is_na(x2) ||
+      NumericVector::is_na(x3) || NumericVector::is_na(x4) ||
+      NumericVector::is_na(x5) || NumericVector::is_na(x6)) {
+    return NA_REAL;
+  }
+
+  // Use the minimum of x3 and x6
+  double xm = std::min(x3, x6);
+
+  // crd <- sqrt((x[1]*xm - x[4]*xm)^2 + (x[2]*xm - x[5]*xm)^2)
+  double t1 = x1 * xm - x4 * xm;
+  double t2 = x2 * xm - x5 * xm;
+  double crd = std::sqrt(t1 * t1 + t2 * t2);
+
+  // out <- asin(crd/2) * 2  (in radians)
+  double arg = crd / 2.0;
+  // Clamp to avoid tiny numerical excursions beyond [-1, 1]
+  if (arg > 1.0) arg = 1.0;
+  if (arg < -1.0) arg = -1.0;
+
+  return 2.0 * std::asin(arg);
+}'
+)
+
 
 # Function to calculate differences in aspect
 
@@ -183,7 +226,7 @@ dem_zips <- list.files(
 
 for (i in 1:length(dem_zips)) {
   
-  # i <- 300
+  i <- 300
   
   unlink(paste0(tmpfolder, "*"))   # Delete everything in the temp folder
   
@@ -207,11 +250,13 @@ for (i in 1:length(dem_zips)) {
   for (j in 1:length(rasters)) {
     # for (j in 1) {
     
-    # j <- 1
+    j <- 1
     
     demtile0 <- rast(rasters[j])
     
     r2 <- rast(ext(demtile0), resolution = 1)
+    
+    r5 <- rast(ext(demtile0), resolution = 5)
     
     r10 <- rast(ext(demtile0), resolution = 10)
     
@@ -523,6 +568,285 @@ plot(micro_flowsd)
 plot(micro_flowsd)
 
 # Old stuff
+
+# Test Gabor filters
+
+library(OpenImageR)
+
+init_gb <- GaborFeatureExtract$new()
+
+gb_f <- init_gb$gabor_filter_bank(
+  scales = 1, orientations = 8, gabor_rows = 3,
+  gabor_columns = 3, plot_data = TRUE
+)
+
+
+outrasters <- list()
+
+for (i in 1:8) {
+  mygabfilter <- gb_f$gabor_real [[i]] %>%
+    abs() %>%
+    subtract(mean(.)) %>%
+    divide_by(sum(abs(.)))
+  # divide_by(sd(.))
+  
+  r_gabor <- focal(demtile, w = mygabfilter)
+  
+  outrasters[[i]] <- r_gabor
+}
+
+plot(r_gabor)
+
+outrasters %>% rast() %>% plot()
+
+mean_gab <- outrasters %>% rast() %>% mean() 
+
+plot(mean_gab)
+
+maxgab <- outrasters %>% rast() %>% max()
+mingab <- outrasters %>% rast() %>% min() %>% multiply_by(-1)
+
+plot(maxgab)  # Valleys
+plot(mingab)  # Ridges
+
+plot(mingab - maxgab)
+
+sdgab <- outrasters %>% rast() %>% app(function(x) {sd(x)})
+
+plot(sdgab)  # Rillyness
+
+plot(mean_gab + sdgab)
+plot(mean_gab - sdgab)
+
+maxgab2 <- ifel(mean_gab > 0, maxgab, 0)
+mingab2 <- ifel(mean_gab < 0, mingab, 0)
+
+plot(maxgab2)
+plot(mingab2)
+
+extremegab <- mingab2 - maxgab2
+
+plot(extremegab)
+
+plot(extremegab + mean_gab)
+
+extremegab2 <- ifel(mean_gab > 0, -sdgab, sdgab)
+
+plot(extremegab2)
+
+plot(extremegab2 + mean_gab)
+
+plot(mingab)
+
+maxgab %>%
+  focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
+  aggregate(fact = 2, fun = "mean") %>%
+  focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
+  aggregate(fact = 2, fun = "mean") %>%
+  focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
+  resample(r5, "bilinear") %>%
+  plot()  # Interesting  - "valleyness"
+
+mingab %>%
+  focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
+  aggregate(fact = 2, fun = "mean") %>%
+  focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
+  aggregate(fact = 2, fun = "mean") %>%
+  focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
+  resample(r5, "bilinear") %>%
+  plot()  # Very similar to maxgab  - "ridginess"
+
+extremegab %>%
+  focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
+  aggregate(fact = 2, fun = "mean") %>%
+  focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
+  aggregate(fact = 2, fun = "mean") %>%
+  focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
+  resample(r5, "bilinear") %>%
+  plot()  # Possibly useful  - "enhanced ridge index"
+
+extremegab2 %>%
+  focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
+  aggregate(fact = 2, fun = "mean") %>%
+  focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
+  aggregate(fact = 2, fun = "mean") %>%
+  focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
+  resample(r5, "bilinear") %>%
+  plot()  # Possibly useful, more variable than the previous one
+# Also "enhanced ridge index". Use this one
+
+mean_gab %>%
+  multiply_by(-1) %>%
+  focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
+  aggregate(fact = 2, fun = "mean") %>%
+  focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
+  aggregate(fact = 2, fun = "mean") %>%
+  focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
+  resample(r5, "bilinear") %>%
+  plot()  # Possibly useful  # "ridge index"
+
+
+mean_gab %>%
+  multiply_by(-1) %>%
+  is_greater_than(0) %>%
+  focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
+  aggregate(fact = 2, fun = "mean") %>%
+  focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
+  aggregate(fact = 2, fun = "mean") %>%
+  focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
+  resample(r5, "bilinear") %>%
+  plot()  # Possibly useful  # "ridge probability"
+# Probably not as useful as using the individual rasters, so skip for now.
+# See example with individual rasters below.
+
+sdgab %>%
+  focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
+  aggregate(fact = 2, fun = "mean") %>%
+  focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
+  aggregate(fact = 2, fun = "mean") %>%
+  focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
+  resample(r5, "bilinear") %>%
+  plot()  # Interesting - similar to mingab and maxgab  "ridge noise"
+
+plot(maxgab - mingab)
+
+(maxgab - mingab) %>%
+  focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
+  aggregate(fact = 2, fun = "mean") %>%
+  focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
+  aggregate(fact = 2, fun = "mean") %>%
+  focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
+  resample(r5, "bilinear") %>%
+  plot()  # could also be useful - skip for now
+
+outrasters %>%
+  rast() %>%
+  median()  %>%
+  focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
+  aggregate(fact = 2, fun = "mean") %>%
+  focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
+  aggregate(fact = 2, fun = "mean") %>%
+  focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
+  resample(r5, "bilinear") %>%
+  plot()  # could also be useful - skip for now
+
+outrasters %>%
+  rast() %>%
+  is_greater_than(0)  %>%
+  mean() %>%
+  focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
+  aggregate(fact = 2, fun = "mean") %>%
+  focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
+  aggregate(fact = 2, fun = "mean") %>%
+  focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
+  resample(r5, "bilinear") %>%
+  plot()  # Looks interesting - could also be useful
+# "Valley probability"
+
+outrasters %>%
+  rast() %>%
+  abs()  %>%
+  mean() %>%
+  focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
+  aggregate(fact = 2, fun = "mean") %>%
+  focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
+  aggregate(fact = 2, fun = "mean") %>%
+  focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
+  resample(r5, "bilinear") %>%
+  plot()
+# Better alternativ to sdgab - "ridge noise" - use this one
+
+mean_gab %>%
+  is_less_than(sdgab) %>% 
+  focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
+  aggregate(fact = 2, fun = "mean") %>%
+  focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
+  aggregate(fact = 2, fun = "mean") %>%
+  focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
+  aggregate(fact = 2, fun = "mean") %>%
+  focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
+  resample(r10, "bilinear") %>%
+  plot()
+# Probably not useful
+
+mean_gab %>%
+  multiply_by(-1) %>%
+  is_less_than(sdgab) %>%
+  focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
+  aggregate(fact = 2, fun = "mean") %>%
+  focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
+  aggregate(fact = 2, fun = "mean") %>%
+  focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
+  aggregate(fact = 2, fun = "mean") %>%
+  focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
+  resample(r10, "bilinear") %>%
+  plot()
+# Probably not useful
+
+mean_gab %>%
+  abs() %>%
+  is_less_than(sdgab) %>%
+  focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
+  aggregate(fact = 2, fun = "mean") %>%
+  focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
+  aggregate(fact = 2, fun = "mean") %>%
+  focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
+  aggregate(fact = 2, fun = "mean") %>%
+  focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
+  resample(r10, "bilinear") %>%
+  plot()
+# Probably not useful
+
+# Test flow direction
+
+tileflowdir <- terrain(demtile, "flowdir")
+
+flowmat <- c(32, 64, 128, 16, NA, 1, 8, 4, 2) %>%
+  rev() %>%
+  matrix(., nrow = 3) %>%
+  t()
+
+flowmat_flat <- c(32, 64, 128, 16, NA, 1, 8, 4, 2) %>%
+  rev()
+
+focalflow <- focal(tileflowdir, 3, function(x) {sum(x == flowmat_flat, na.rm = TRUE)})
+
+plot(focalflow)
+
+focalflow %>%
+  focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
+  aggregate(fact = 2, fun = "mean") %>%
+  focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
+  aggregate(fact = 2, fun = "mean") %>%
+  focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
+  resample(r5, "bilinear") %>%
+  plot()
+
+tileslope_tan <- terrain(demtile, "slope", unit = "radians") %>% tan()
+
+focalflow %>%
+  add(1) %>%
+  log() %>%
+  focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
+  aggregate(fact = 2, fun = "mean") %>%
+  focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
+  aggregate(fact = 2, fun = "mean") %>%
+  focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
+  resample(r5, "bilinear") %>%
+  plot()
+
+focalflow %>%
+  add(1) %>%
+  divide_by(tileslope_tan) %>%
+  subst(from = Inf, to = 1) %>%
+  log() %>%
+  focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
+  aggregate(fact = 2, fun = "mean") %>%
+  focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
+  aggregate(fact = 2, fun = "mean") %>%
+  focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
+  resample(r5, "bilinear") %>%
+  plot()
 
 # Test asp diff with slope
 # plot(demtile)
