@@ -1,10 +1,13 @@
 # Microtography
 
 # Notes
-# I am using 1 m resolution instead of the original 0.4 resolution, as the the 
+# I am using 0.8 m resolution instead of the original 0.4 resolution, as the the 
 # highest resolution seems to contain linear artifacts. Maybe related to 
 # overlaps between flights?
-# Also, resampling the DEM to 1 m increases the speed of computation.
+# Also, resampling the DEM to 0.8  m increases the speed of computation.
+
+# I should first aggregate the intermediate results to 5 m resolution.
+# The merge the tiles, smooth the rasters and aggregate to 10 m.
 
 library(terra)
 library(magrittr)
@@ -208,9 +211,9 @@ differ_aspect <- function(x) {
     focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
     aggregate(fact = 2, fun = "mean") %>%
     focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
-    aggregate(fact = 2, fun = "mean") %>%
-    focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
-    resample(r10, "bilinear") %>%
+    # aggregate(fact = 2, fun = "mean") %>%
+    # focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
+    resample(r5, "bilinear") %>%
     round(3)
   
   return(asp_diff_agg)
@@ -280,7 +283,7 @@ for (i in 1:length(dem_zips)) {
       focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
       aggregate(fact = 2, fun = "sum") %>%
       focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
-      resample(r10, "bilinear") %>%
+      resample(r5, "bilinear") %>%
       multiply_by(100/6.4^2) %>%
       round(1)
     
@@ -305,7 +308,7 @@ for (i in 1:length(dem_zips)) {
       focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
       aggregate(fact = 2, fun = "median") %>%
       focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
-      resample(r10, "bilinear") %>%
+      resample(r5, "bilinear") %>%
       round(3)
     
     rasterlist_dem_mad[[j]] <- dem_mad
@@ -334,7 +337,7 @@ for (i in 1:length(dem_zips)) {
       focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
       aggregate(fact = 2, fun = "mean") %>%
       focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
-      resample(r10, "bilinear") %>%
+      resample(r5, "bilinear") %>%
       sqrt() %>%
       round(2)
     
@@ -383,7 +386,7 @@ for (i in 1:length(dem_zips)) {
       focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
       aggregate(fact = 2, fun = "mean") %>%
       focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
-      resample(r10, "bilinear") %>%
+      resample(r5, "bilinear") %>%
       sqrt() %>%
       round(3)
     
@@ -540,11 +543,11 @@ micro_slopeaspsd <- dir_tiles_slopeaspsd %>%
 
 # Inspect results from first loop
 
-# plot(demtile)
-# plot(n_mins)
-# plot(dem_mad)
-# plot(tileasp_sd_agg)
-# plot(tileflow_sd)
+plot(demtile)
+plot(n_mins)
+plot(dem_mad)
+plot(tileasp_sd_agg)
+plot(tileflow_sd)
 
 # Plot tiles for second loop
 
@@ -638,6 +641,10 @@ plot(extremegab2 + mean_gab)
 
 plot(mingab)
 
+extremegab3 <- ifel(maxgab > (-1*mingab), maxgab, mingab)
+
+plot(extremegab3)
+
 maxgab %>%
   focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
   aggregate(fact = 2, fun = "mean") %>%
@@ -664,6 +671,7 @@ extremegab %>%
   focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
   resample(r5, "bilinear") %>%
   plot()  # Possibly useful  - "enhanced ridge index"
+# However, the alternative below is better, so do not use.
 
 extremegab2 %>%
   focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
@@ -673,7 +681,7 @@ extremegab2 %>%
   focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
   resample(r5, "bilinear") %>%
   plot()  # Possibly useful, more variable than the previous one
-# Also "enhanced ridge index". Use this one
+# Also "enhanced ridge index", still too flat, do not use
 
 mean_gab %>%
   multiply_by(-1) %>%
@@ -683,7 +691,7 @@ mean_gab %>%
   aggregate(fact = 2, fun = "mean") %>%
   focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
   resample(r5, "bilinear") %>%
-  plot()  # Possibly useful  # "ridge index"
+  plot()  # Possibly useful  # "ridge index", a bit too flat, so do not use
 
 
 mean_gab %>%
@@ -707,6 +715,7 @@ sdgab %>%
   focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
   resample(r5, "bilinear") %>%
   plot()  # Interesting - similar to mingab and maxgab  "ridge noise"
+# However, there is a bettwe alternative below, so do not use
 
 plot(maxgab - mingab)
 
@@ -717,7 +726,7 @@ plot(maxgab - mingab)
   aggregate(fact = 2, fun = "mean") %>%
   focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
   resample(r5, "bilinear") %>%
-  plot()  # could also be useful - skip for now
+  plot()  # could also be useful - skip for now, do not use
 
 outrasters %>%
   rast() %>%
@@ -728,7 +737,7 @@ outrasters %>%
   aggregate(fact = 2, fun = "mean") %>%
   focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
   resample(r5, "bilinear") %>%
-  plot()  # could also be useful - skip for now
+  plot()  # could also be useful - skip for now, do not use
 
 outrasters %>%
   rast() %>%
@@ -741,7 +750,7 @@ outrasters %>%
   focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
   resample(r5, "bilinear") %>%
   plot()  # Looks interesting - could also be useful
-# "Valley probability"
+# "Valley probability", but skip for now, do not use
 
 outrasters %>%
   rast() %>%
@@ -754,7 +763,7 @@ outrasters %>%
   focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
   resample(r5, "bilinear") %>%
   plot()
-# Better alternativ to sdgab - "ridge noise" - use this one
+# Better alternativ to sdgab - "ridge noise" - use this one, use
 
 mean_gab %>%
   is_less_than(sdgab) %>% 
@@ -763,11 +772,9 @@ mean_gab %>%
   focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
   aggregate(fact = 2, fun = "mean") %>%
   focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
-  aggregate(fact = 2, fun = "mean") %>%
-  focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
-  resample(r10, "bilinear") %>%
+  resample(r5, "bilinear") %>%
   plot()
-# Probably not useful
+# Probably not useful, do not use
 
 mean_gab %>%
   multiply_by(-1) %>%
@@ -777,11 +784,9 @@ mean_gab %>%
   focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
   aggregate(fact = 2, fun = "mean") %>%
   focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
-  aggregate(fact = 2, fun = "mean") %>%
-  focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
-  resample(r10, "bilinear") %>%
+  resample(r5, "bilinear") %>%
   plot()
-# Probably not useful
+# Probably not useful, do not use
 
 mean_gab %>%
   abs() %>%
@@ -791,13 +796,60 @@ mean_gab %>%
   focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
   aggregate(fact = 2, fun = "mean") %>%
   focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
+  resample(r5, "bilinear") %>%
+  plot()
+# Probably not useful, do not use
+
+(sdgab*log(tileslope_smooth)) %>% 
+  focal(mygaussmat, fun = "mean", na.rm = TRUE) %>% 
+  subst(from = -Inf, to = 0) %>%
+  aggregate(fact = 2, fun = "mean") %>% 
+  focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
   aggregate(fact = 2, fun = "mean") %>%
   focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
-  resample(r10, "bilinear") %>%
-  plot()
-# Probably not useful
+  resample(r5, "bilinear") %>%
+  multiply_by(-1) %>%
+  plot()  # Ridge slope index, use
 
-# Test flow direction
+which.lyr(rast(outrasters) == extremegab3) %>%
+  subtract(1) %>%
+  multiply_by(2*pi/8) %>%
+  cos() %>%
+  focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
+  aggregate(fact = 2, fun = "mean") %>%
+  focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
+  aggregate(fact = 2, fun = "mean") %>%
+  focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
+  resample(r5, "bilinear") %>%
+  plot()  # Ridge direction, interesting, but do not use
+
+plot((mean_gab - mingab)/(maxgab + mingab))
+
+((mean_gab - mingab)/(maxgab + mingab)) %>%
+  subst(from = NaN, to = 0) %>%
+  subst(from = Inf, to = 0) %>%
+  subst(from = -Inf, to = 0) %>%
+  focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
+  aggregate(fact = 2, fun = "mean") %>%
+  focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
+  aggregate(fact = 2, fun = "mean") %>%
+  focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
+  resample(r5, "bilinear") %>%
+  plot()  # Local Ridge/valley index, the next one is better, so do not use
+
+((maxgab)/(maxgab + mingab)) %>%
+  subst(from = NaN, to = 0) %>%
+  subst(from = Inf, to = 0) %>%
+  subst(from = -Inf, to = 0) %>%
+  focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
+  aggregate(fact = 2, fun = "mean") %>%
+  focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
+  aggregate(fact = 2, fun = "mean") %>%
+  focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
+  resample(r5, "bilinear") %>%
+  plot()  # Local Ridge/valley index, use
+
+# Test flow direction 
 
 tileflowdir <- terrain(demtile, "flowdir")
 
@@ -820,7 +872,7 @@ focalflow %>%
   aggregate(fact = 2, fun = "mean") %>%
   focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
   resample(r5, "bilinear") %>%
-  plot()
+  plot()  # Degree of convergent flow, do not use
 
 tileslope_tan <- terrain(demtile, "slope", unit = "radians") %>% tan()
 
@@ -833,7 +885,7 @@ focalflow %>%
   aggregate(fact = 2, fun = "mean") %>%
   focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
   resample(r5, "bilinear") %>%
-  plot()
+  plot()  # Degree of convergent flow, log scale, use
 
 focalflow %>%
   add(1) %>%
@@ -846,7 +898,21 @@ focalflow %>%
   aggregate(fact = 2, fun = "mean") %>%
   focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
   resample(r5, "bilinear") %>%
-  plot()
+  plot()  # Local TWI, use
+
+
+focalflow %>%
+  add(1) %>%
+  log() %>%
+  subtract(1) %>%
+  abs() %>%
+  focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
+  aggregate(fact = 2, fun = "mean") %>%
+  focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
+  aggregate(fact = 2, fun = "mean") %>%
+  focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
+  resample(r5, "bilinear") %>%
+  plot()  # Overall flow convergence/divergence, use
 
 # Test asp diff with slope
 # plot(demtile)
