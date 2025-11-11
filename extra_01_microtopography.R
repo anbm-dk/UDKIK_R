@@ -190,34 +190,70 @@ double chordAngleCpp(NumericVector x) {
 )
 
 
+# Function to aggregate to 5 m resolution
+# Include "fun" as an argument (mean/sum/sd)
+
+agg_5m <- function(
+    x, 
+    fun_focal1, 
+    fun_focal2,
+    fun_agg,
+    decimals
+    ) {
+  out <- x %>%
+    focal(mygaussmat, fun = fun_focal1, na.rm = TRUE) %>%
+    aggregate(fact = 2, fun = fun_agg) %>%
+    focal(mygaussmat, fun = fun_focal2, na.rm = TRUE) %>%
+    aggregate(fact = 2, fun = fun_agg) %>%
+    focal(mygaussmat, fun = fun_focal2, na.rm = TRUE) %>%
+    resample(r5, "bilinear") %>%
+    round(decimals)
+  return(out)
+}
+
+# Function to aggregate from 5 m to 10 m resolution.
+
+agg_5to10m <- function(
+    x,
+    fun_focal,
+    fun_agg,
+    decimals
+    ) {
+  out <- x %>%
+    focal(mygaussmat, fun = fun_focal, na.rm = TRUE) %>%
+    aggregate(fact = 2, fun = fun_agg) %>%
+    round(decimals)
+  return(out)
+}
+
+
 # Function to calculate differences in aspect
 
 differ_aspect <- function(x) {
   library(circhelp)
   
-  x <- demtile
+  # x <- demtile
   
   asp <- terrain(x, "aspect", unit = "radians")
-
+  
   dem_focal <- focal(x, mygaussmat, fun = "mean", na.rm = TRUE)
   
-  asp_focal <- dem_focal %>% terrain("aspect", unit = "radians")
+  asp_focal <- dem_focal %>%
+    terrain("aspect", unit = "radians")
   
   asp_diff2 <- angle_diff_rad(asp, asp_focal)
   
   asp_diff_agg <- asp_diff2 %>%
-    focal(mygaussmat, fun = "sd", na.rm = TRUE) %>%
-    aggregate(fact = 2, fun = "mean") %>%
-    focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
-    aggregate(fact = 2, fun = "mean") %>%
-    focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
-    # aggregate(fact = 2, fun = "mean") %>%
-    # focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
-    resample(r5, "bilinear") %>%
-    round(3)
-  
+    agg_5m(
+      fun_focal1 = "sd", 
+      fun_focal2 = "mean",
+      fun_agg = "mean",
+      decimals = 3
+    )
+    
   return(asp_diff_agg)
 }
+
 
 # Path for DEMs
 
@@ -229,7 +265,7 @@ dem_zips <- list.files(
 
 for (i in 1:length(dem_zips)) {
   
-  i <- 300
+  i <- 300  # NB
   
   unlink(paste0(tmpfolder, "*"))   # Delete everything in the temp folder
   
@@ -253,7 +289,7 @@ for (i in 1:length(dem_zips)) {
   for (j in 1:length(rasters)) {
     # for (j in 1) {
     
-    j <- 1
+    j <- 1  # NB
     
     demtile0 <- rast(rasters[j])
     
@@ -264,6 +300,8 @@ for (i in 1:length(dem_zips)) {
     r10 <- rast(ext(demtile0), resolution = 10)
     
     # demtile <- resample(demtile, r2, "average")
+    
+    # Aggregate to 0.8 m resolution
     
     demtile <- demtile0 %>%
       focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
@@ -276,16 +314,12 @@ for (i in 1:length(dem_zips)) {
     lessthanmin <- demtile < focalmin
     
     n_mins <- lessthanmin %>%
-      focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
-      aggregate(fact = 2, fun = "sum") %>%
-      focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
-      aggregate(fact = 2, fun = "sum") %>%
-      focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
-      aggregate(fact = 2, fun = "sum") %>%
-      focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
-      resample(r5, "bilinear") %>%
-      multiply_by(100/6.4^2) %>%
-      round(1)
+      agg_5m(
+        fun_focal1 = "mean", 
+        fun_focal2 = "mean",
+        fun_agg = "sum",
+        decimals = 1
+      )
     
     # n_mins <- aggregate(lessthanmin, fact = 10, fun = "sum")
     
@@ -297,19 +331,13 @@ for (i in 1:length(dem_zips)) {
     
     demdiffs <- abs(focalmeans - demtile)
     
-    # dem_mad <- aggregate(demdiffs, fact = 10, fun = "median", na.rm = TRUE) %>%
-    #   round(3)
-    
     dem_mad <- demdiffs %>%
-      focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
-      aggregate(fact = 2, fun = "median") %>%
-      focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
-      aggregate(fact = 2, fun = "median") %>%
-      focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
-      aggregate(fact = 2, fun = "median") %>%
-      focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
-      resample(r5, "bilinear") %>%
-      round(3)
+      agg_5m(
+        fun_focal1 = "mean", 
+        fun_focal2 = "mean",
+        fun_agg = "median",
+        decimals = 3
+      )
     
     rasterlist_dem_mad[[j]] <- dem_mad
     
@@ -330,28 +358,17 @@ for (i in 1:length(dem_zips)) {
     
     tileflow_sd <- tileflow %>%
       raise_to_power(2) %>%
-      focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
-      aggregate(fact = 2, fun = "mean") %>%
-      focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
-      aggregate(fact = 2, fun = "mean") %>%
-      focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
-      aggregate(fact = 2, fun = "mean") %>%
-      focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
-      resample(r5, "bilinear") %>%
+      agg_5m(
+        fun_focal1 = "mean", 
+        fun_focal2 = "mean",
+        fun_agg = "mean",
+        decimals = 4
+      ) %>%
       sqrt() %>%
       round(2)
     
     # Note: It is also possible to do channels/ridges and the mean value.
     # However, this will have to wait.
-    
-    # tileflow_sd <- aggregate(
-    #   tileflow^2,
-    #   fact = 10,
-    #   fun = "sd",
-    #   na.rm = TRUE
-    # ) %>%
-    #   sqrt() %>%
-    #   round(2)
     
     rasterlist_flowsd[[j]] <- tileflow_sd
     
@@ -379,18 +396,23 @@ for (i in 1:length(dem_zips)) {
     
     tileaslopeasp_sd_agg <- angletest5 %>%
       raise_to_power(2) %>%
-      focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
-      aggregate(fact = 2, fun = "mean") %>%
-      focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
-      aggregate(fact = 2, fun = "mean") %>%
-      focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
-      aggregate(fact = 2, fun = "mean") %>%
-      focal(mygaussmat, fun = "mean", na.rm = TRUE) %>%
-      resample(r5, "bilinear") %>%
+      agg_5m(
+        fun_focal1 = "mean", 
+        fun_focal2 = "mean",
+        fun_agg = "mean",
+        decimals = 5
+      ) %>%
       sqrt() %>%
       round(3)
     
     rasterlist_slopeaspsd[[j]] <- tileaslopeasp_sd_agg
+    
+    # Gabor filter products
+    
+    
+    
+    # Flow direction products
+    
     
     print(paste0("i = ", i, "; j = ", j))
   }
